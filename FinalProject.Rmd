@@ -1,0 +1,136 @@
+---
+title: "Machine Learning Algorithms for Final Project"
+author: "Shikha Jain"
+date: "April 8, 2018"
+output: html_document
+---
+
+## Project Description
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). The data for this project come from this source: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har. 
+
+# Data Sources
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+# Goal of the project
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+## Executive Summary
+For this project, we started with downloading the data from above given links. This was followed by extensive cleaning of the data, like removing any near zero variance variables and also eliminiating variables with more than 70% of NAs in the observations. Moving forward, we utilized 2 different machine elarning algorithms (could not include more due to extensive processing time) to examine the accuracy of predictions: NaiveBayes with gave 65% accuracy, and Random Forest which gave 99.9% accuracy. Out of these, Random Forest machine learning algorithm was selected to test the final test dataset. The expected out-of-sample error is calculated to be 100-99.9=0.1%
+
+## LOading the data
+We first load all the required libraries, followed by the data
+
+```{r, cache=TRUE}
+library(caret)
+library(e1071)
+# dowanload the training test data set
+url1<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url2<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(url1,"data.csv")
+download.file(url2,"test.csv")
+
+#create local dataset
+trainset<-read.csv("data.csv",header=TRUE,na.strings=c("NA","#DIV/0!",""))
+head(trainset[,1:10])
+testset<-read.csv("test.csv",header=TRUE,na.strings=c("NA","#DIV/0!",""))
+head(testset[,1:10])
+```
+
+## Cleaning the data
+We clean the loaded data by first removing the variables with near zero variance, followed by removing any variable that has more than 70% NA values in observations
+
+```{r cache=TRUE}
+#begin by first removing the first coloumn
+train_temp<-trainset[c(-1)]
+#second by removing zero variance coloumns
+nzv_temp<-nearZeroVar(train_temp,saveMetrics=TRUE)
+train_temp<-train_temp[,nzv_temp$nzv==FALSE]
+#third by removing variables with more than 60% NA values
+train1<-train_temp
+count<-TRUE
+for (i in 1:length(train1)){
+  if (sum(is.na(train1[,i]))/nrow(train1)>=0.6)
+    {count[i]<-TRUE
+  }
+  else
+    count[i]<-FALSE
+}
+train1<-train1[,count==FALSE]
+train_temp<-train1
+# repeat above steps for test data set
+testset<-testset[c(-1)]
+testset<-testset[,nzv_temp$nzv==FALSE]
+testset<-testset[,count==FALSE]
+```
+
+Now divide the training set into training and testing data sets for algorithms to train.
+
+```{r cache=TRUE}
+# divide the training data set into train and test sets
+inTrain<-createDataPartition(train_temp$classe,p=0.75,list=FALSE)
+trainsub<-train_temp[inTrain,]
+testsub<-train_temp[-inTrain,]
+dim(trainsub)
+dim(testsub)
+```
+
+For all the below studied algorithms, we use cross-validation technique in order to avoid any overfitting and consequently improve efficiency of the modeling. We will use 5 folds for the same.
+
+## Prediction with NaiveBayes Algorithm
+Below we show the code and results with prediction for NaiveBayes algorithm.
+
+```{r chache=TRUE}
+# configure parallel processing
+library(parallel)
+library(doParallel)
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
+
+# let us use cross validation process with 5 folds for each model.
+cr_val<-trainControl(method="cv",number=5,allowParallel = TRUE)
+
+# First model to test is NaiveBayes
+library(e1071)
+fit_nb<-naiveBayes(classe~.,data=trainsub,trcontrol=cr_val)
+summary(fit_nb)
+predtestsub<-predict(fit_nb,newdata=testsub)
+confMat_nb<-confusionMatrix(testsub$classe,predtestsub)
+confMat_nb$table
+confMat_nb$overall[1]
+# NaiveBayes model gives 65% accuracy
+```
+
+As seen above, NaiveBayes gives 65% accuracy
+
+## Prediction with Random Forest Algorithm
+Below we utilize Random Forest Algorithm for testing
+
+```{r cache=TRUE}
+#second model to use is Random Forest
+fit_rf<-train(classe~.,data=trainsub,trcontrol=cr_val,method="rf")
+summary(fit_rf)
+predtestsub<-predict(fit_rf,newdata=testsub)
+confMat_rf<-confusionMatrix(testsub$classe,predtestsub)
+confMat_rf$table
+confMat_rf$overall[1]
+plot(fit_rf,main="Accuracy as a function of randomely selected predictors")
+plot(confMat_rf$table, main = paste("Random Forest Confusion Matrix: Accuracy =", round(confMat_rf$overall['Accuracy'], 4)))
+#Random Forest gives 99.9%  accuracy
+stopCluster(cluster)
+registerDoSEQ()
+```
+
+Random Forest geenrates 99.9% accuracy.
+
+## Conclusion
+The above analysis shows that Random Forest gives the closest prediction in the training data set. The expected out of sample error is 100-99.9=0.1%
+We will now use 'fit_rf' for predicting the test set as below.
+
+```{r}
+predict_test<-predict(fit_rf,newdata=testset)
+predict_test
+```
